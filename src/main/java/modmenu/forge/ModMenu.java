@@ -18,7 +18,7 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import java.util.ArrayList;
 import java.util.List;
 
-@Mod(modid = ModMenu.MODID, name = "Mod Menu Legacy", version = "1.0.0", clientSideOnly = true,
+@Mod(modid = ModMenu.MODID, name = "Mod Menu Legacy", version = "1.1.0", clientSideOnly = true,
         acceptedMinecraftVersions = "[1.8.9]", guiFactory = "modmenu.forge.ModMenuGuiFactory")
 public class ModMenu {
     public static final String MODID = "modmenulegacy";
