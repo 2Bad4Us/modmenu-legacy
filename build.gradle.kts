@@ -20,6 +20,7 @@ loom {
                 val dir = project.property("screenshots").toString()
                 property("modmenulegacy.screenshots", if (dir.isBlank() || dir == "true") project.projectDir.absolutePath else dir)
                 programArgs("--width", "1600", "--height", "900")
+                project.findProperty("shotSelect")?.let { property("modmenulegacy.select", it.toString()) }
             }
             isIdeConfigGenerated = true
         }

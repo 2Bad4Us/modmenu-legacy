@@ -1,5 +1,7 @@
 package modmenu.forge.gui;
 
+import modmenu.forge.ModBadge;
+import modmenu.forge.ModInfo;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.renderer.GlStateManager;
@@ -12,7 +14,13 @@ import net.minecraftforge.fml.common.ModContainer;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
+import java.io.File;
 import java.io.InputStream;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -44,24 +52,72 @@ public final class ModIcons {
         if (mod == Loader.instance().getMinecraftModContainer()) {
             return mc.getResourcePackRepository().rprDefaultResourcePack.getPackImage();
         }
-        String logoFile = mod.getMetadata() == null ? null : mod.getMetadata().logoFile;
-        if (logoFile == null || logoFile.isEmpty()) return null;
-        IResourcePack pack = FMLClientHandler.instance().getResourcePackFor(mod.getModId());
-        if (pack != null) {
+        if ("FML".equals(mod.getModId())) {
+            // FML has no logo of its own; it ships inside Forge, so borrow Forge's
+            ModContainer forge = Loader.instance().getIndexedModList().get("Forge");
+            if (forge != null) return load(forge);
+        }
+        String logoFile = ModInfo.get(mod).logoFile;
+        if (logoFile != null) {
+            // Forge's own way first (the mod's resource pack), then the classpath
+            IResourcePack pack = FMLClientHandler.instance().getResourcePackFor(mod.getModId());
+            if (pack != null && logoFile.equals(mod.getMetadata().logoFile)) {
+                try {
+                    BufferedImage image = pack.getPackImage();
+                    if (image != null) return image;
+                } catch (Exception ignored) {
+                }
+            }
+            BufferedImage image = readFromSource(mod, Collections.singletonList(logoFile));
+            if (image != null) return image;
+            InputStream in = ModIcons.class.getResourceAsStream(logoFile.startsWith("/") ? logoFile : "/" + logoFile);
+            if (in != null) {
+                try {
+                    return ImageIO.read(in);
+                } finally {
+                    in.close();
+                }
+            }
+        }
+        // No (working) logoFile: look for the usual icon names in the mod's jar
+        String id = mod.getModId().toLowerCase();
+        return readFromSource(mod, Arrays.asList(
+                "assets/" + id + "/icon.png", "assets/" + id + "/logo.png", "assets/" + id + "/textures/icon.png",
+                "assets/" + id + "/textures/logo.png", "icon.png", "logo.png", "pack.png", id + ".png"));
+    }
+
+    /** Reads the first of the given paths that exists in the mod's jar or folder. */
+    private static BufferedImage readFromSource(ModContainer mod, List<String> paths) {
+        File source = mod.getSource();
+        if (source == null || !source.exists()) return null;
+        if (ModBadge.isMinecraft(mod) && !"Forge".equals(mod.getModId()) && !"mcp".equals(mod.getModId())) return null;
+        for (String raw : paths) {
+            String path = raw.startsWith("/") ? raw.substring(1) : raw;
             try {
-                BufferedImage image = pack.getPackImage();
-                if (image != null) return image;
+                if (source.isDirectory()) {
+                    File file = new File(source, path);
+                    if (file.isFile()) return ImageIO.read(file);
+                } else {
+                    ZipFile zip = new ZipFile(source);
+                    try {
+                        ZipEntry entry = zip.getEntry(path);
+                        if (entry != null) {
+                            InputStream in = zip.getInputStream(entry);
+                            try {
+                                BufferedImage image = ImageIO.read(in);
+                                if (image != null) return image;
+                            } finally {
+                                in.close();
+                            }
+                        }
+                    } finally {
+                        zip.close();
+                    }
+                }
             } catch (Exception ignored) {
             }
         }
-        String path = logoFile.startsWith("/") ? logoFile : "/" + logoFile;
-        InputStream in = ModIcons.class.getResourceAsStream(path);
-        if (in == null) return null;
-        try {
-            return ImageIO.read(in);
-        } finally {
-            in.close();
-        }
+        return null;
     }
 
     public static void draw(ModContainer mod, int x, int y, int size) {

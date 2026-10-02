@@ -54,7 +54,7 @@ public class ScreenshotDriver {
                 break;
             }
             case 2: // another mod selected
-                if (mc.currentScreen instanceof ModsScreen) select((ModsScreen) mc.currentScreen, "custom-crosshair-mod");
+                if (mc.currentScreen instanceof ModsScreen) select((ModsScreen) mc.currentScreen, System.getProperty("modmenulegacy.select", "custom-crosshair-mod"));
                 shot("screenshot 3", 15);
                 break;
             case 3: // load a world

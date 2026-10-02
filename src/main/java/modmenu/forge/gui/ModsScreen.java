@@ -1,6 +1,7 @@
 package modmenu.forge.gui;
 
 import modmenu.forge.ModBadge;
+import modmenu.forge.ModInfo;
 import modmenu.forge.ModMenu;
 import modmenu.forge.ModMenuConfig;
 import net.minecraft.client.gui.GuiButton;
@@ -132,8 +133,7 @@ public class ModsScreen extends GuiScreen {
     // ---- data -------------------------------------------------------------------------------
 
     public static String getSummary(ModContainer mod) {
-        ModMetadata meta = mod.getMetadata();
-        String description = meta == null ? null : meta.description;
+        String description = ModInfo.get(mod).description;
         if (mod == Loader.instance().getMinecraftModContainer() && (description == null || description.isEmpty())) {
             return "The base game.";
         }
@@ -142,12 +142,11 @@ public class ModsScreen extends GuiScreen {
     }
 
     private static String authors(ModContainer mod) {
-        ModMetadata meta = mod.getMetadata();
-        if (meta == null || meta.authorList == null || meta.authorList.isEmpty()) return "";
+        List<String> list = ModInfo.get(mod).authors;
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < meta.authorList.size(); i++) {
+        for (int i = 0; i < list.size(); i++) {
             if (i > 0) sb.append(", ");
-            sb.append(meta.authorList.get(i));
+            sb.append(list.get(i));
         }
         return sb.toString();
     }
@@ -203,9 +202,7 @@ public class ModsScreen extends GuiScreen {
     private String getWebsite(ModContainer mod) {
         if (mod == null) return null;
         if (mod == Loader.instance().getMinecraftModContainer()) return "https://www.minecraft.net/";
-        ModMetadata meta = mod.getMetadata();
-        if (meta == null || meta.url == null || meta.url.trim().isEmpty()) return null;
-        return meta.url.trim();
+        return ModInfo.get(mod).url;
     }
 
     private String getUpdateUrl(ModContainer mod) {
@@ -482,7 +479,8 @@ public class ModsScreen extends GuiScreen {
         }
 
         String authors = authors(selected);
-        boolean hasCredits = meta != null && meta.credits != null && !meta.credits.trim().isEmpty();
+        String credits = ModInfo.get(selected).credits;
+        boolean hasCredits = credits != null;
         if (!authors.isEmpty() || hasCredits) {
             lines.add("");
             lines.add("Credits:");
@@ -491,7 +489,7 @@ public class ModsScreen extends GuiScreen {
                 for (String l : fontRendererObj.listFormattedStringToWidth(authors, wrapWidth - 16)) lines.add("    " + l);
             }
             if (hasCredits) {
-                for (String l : fontRendererObj.listFormattedStringToWidth(meta.credits, wrapWidth - 8)) lines.add("  " + l);
+                for (String l : fontRendererObj.listFormattedStringToWidth(credits, wrapWidth - 8)) lines.add("  " + l);
             }
         }
 
