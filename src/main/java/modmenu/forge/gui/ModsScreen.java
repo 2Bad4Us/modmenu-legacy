@@ -4,6 +4,7 @@ import modmenu.forge.ModBadge;
 import modmenu.forge.ModInfo;
 import modmenu.forge.ModMenu;
 import modmenu.forge.ModMenuConfig;
+import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.GuiTextField;
@@ -27,8 +28,10 @@ import java.util.List;
 public class ModsScreen extends GuiScreen {
     private static final int DONE = 0, OPEN_FOLDER = 1, FILTERS = 2, SORT = 3, LIBRARIES = 4, CONFIGURE = 5,
             WEBSITE = 6, UPDATES = 7;
-    private static final int HEADER_Y = 36;
-    private static final String LINK_PREFIX = "" + EnumChatFormatting.BLUE + EnumChatFormatting.UNDERLINE;
+    private static final int MARGIN = 8;
+    private static final int GAP = 8;
+    private static final int PAD = 8;
+    private static final int LINE = 10;
 
     private static String lastSearch = "";
     private static boolean filtersShown = false;
@@ -40,10 +43,14 @@ public class ModsScreen extends GuiScreen {
     private ModContainer selected;
     private List<ModContainer> allMods;
 
-    private GuiButton configureButton, websiteButton, updatesButton, sortButton, librariesButton;
-    private int paneY, paneWidth, rightPaneX, showingY;
-    private float descriptionScroll;
+    private FlatButton filterButton, configureButton, websiteButton, updatesButton, sortButton, librariesButton;
+
+    // Layout
+    private int leftX, leftRight, rightX, rightRight, panelTop, panelBottom;
+    private int searchX, searchY, searchRight, searchBottom;
     private int descriptionTop;
+
+    private float descriptionScroll, descriptionTarget;
     private int linkX, linkY, linkWidth = -1;
 
     /** Hidden title screen used only to draw the rotating panorama behind us. */
@@ -61,40 +68,60 @@ public class ModsScreen extends GuiScreen {
         allMods = ModMenu.getAllMods();
         if (mc.theWorld == null) setupPanorama();
 
-        paneWidth = width / 2 - 8;
-        rightPaneX = width - paneWidth;
-        showingY = filtersShown ? 64 : 42;
-        paneY = showingY + 13;
+        int columnWidth = (width - MARGIN * 2 - GAP) / 2;
+        leftX = MARGIN;
+        leftRight = leftX + columnWidth;
+        rightX = leftRight + GAP;
+        rightRight = width - MARGIN;
 
-        int searchBoxX = 8;
-        int filterX = paneWidth - 26;
-        int searchBoxWidth = filterX - 4 - searchBoxX;
-        searchBox = new GuiTextField(99, fontRendererObj, searchBoxX, 18, searchBoxWidth, 18);
+        // Search bar + filter toggle
+        searchX = leftX;
+        searchY = 24;
+        searchBottom = searchY + 18;
+        searchRight = leftRight - 22;
+        searchBox = new GuiTextField(99, fontRendererObj, searchX + 18, searchY + 5, searchRight - searchX - 18 - 52, 10);
+        searchBox.setEnableBackgroundDrawing(false);
         searchBox.setMaxStringLength(64);
         searchBox.setText(lastSearch);
         searchBox.setFocused(true);
 
         buttonList.clear();
-        buttonList.add(new GuiButton(FILTERS, filterX, 17, 20, 20, ""));
+        filterButton = new FlatButton(FILTERS, leftRight - 18, searchY, 18, 18, "").withIcon(new FlatButton.Icon() {
+            @Override
+            public void draw(int x, int y, int w, int h, int color) {
+                drawFilterIcon(x, y, w, h, color);
+            }
+        });
+        filterButton.active = filtersShown;
+        buttonList.add(filterButton);
 
-        int filterWidth = (filterX + 20 - searchBoxX) / 2 - 1;
-        sortButton = new GuiButton(SORT, searchBoxX, 40, filterWidth, 20, "");
-        librariesButton = new GuiButton(LIBRARIES, searchBoxX + filterWidth + 2, 40, filterWidth, 20, "");
+        int half = (leftRight - leftX - 4) / 2;
+        sortButton = new FlatButton(SORT, leftX, searchBottom + 4, half, 16, "");
+        librariesButton = new FlatButton(LIBRARIES, leftX + half + 4, searchBottom + 4, leftRight - leftX - half - 4, 16, "");
         sortButton.visible = librariesButton.visible = filtersShown;
         buttonList.add(sortButton);
         buttonList.add(librariesButton);
 
-        configureButton = new GuiButton(CONFIGURE, width - 22, HEADER_Y, 20, 20, "");
-        websiteButton = new WideButton(WEBSITE, rightPaneX, HEADER_Y + 37, 100, 20, "Website");
-        updatesButton = new WideButton(UPDATES, rightPaneX, HEADER_Y + 37, 100, 20, "Updates");
+        panelTop = filtersShown ? searchBottom + 26 : searchBottom + 6;
+        panelBottom = height - 32;
+
+        configureButton = new FlatButton(CONFIGURE, rightRight - PAD - 18, panelTop + PAD, 18, 18, "")
+                .withIcon(new FlatButton.Icon() {
+                    @Override
+                    public void draw(int x, int y, int w, int h, int color) {
+                        drawConfigIcon(x, y, color);
+                    }
+                });
+        websiteButton = new FlatButton(WEBSITE, rightX + PAD, panelTop + 48, 100, 18, "Website");
+        updatesButton = new FlatButton(UPDATES, rightX + PAD, panelTop + 48, 100, 18, "Updates");
         buttonList.add(configureButton);
         buttonList.add(websiteButton);
         buttonList.add(updatesButton);
 
-        buttonList.add(new GuiButton(OPEN_FOLDER, width / 2 - 154, height - 28, 150, 20, "Open Mods Folder"));
-        buttonList.add(new GuiButton(DONE, width / 2 + 4, height - 28, 150, 20, "Done"));
+        buttonList.add(new FlatButton(OPEN_FOLDER, width / 2 - 154, height - 25, 150, 18, "Open Mods Folder"));
+        buttonList.add(new FlatButton(DONE, width / 2 + 4, height - 25, 150, 18, "Done"));
 
-        list = new ModListWidget(this, 0, paneY, paneWidth, height - 36 - paneY);
+        list = new ModListWidget(this, leftX, panelTop, leftRight - leftX, panelBottom - panelTop);
         refreshList();
         updateButtons();
     }
@@ -115,13 +142,13 @@ public class ModsScreen extends GuiScreen {
 
     private void drawBackgroundLayer(int mouseX, int mouseY, float partialTicks) {
         if (mc.theWorld != null) {
-            drawDefaultBackground();
+            drawGradientRect(0, 0, width, height, 0x90101010, 0xB0101010);
             return;
         }
         if (renderSkybox != null) {
             try {
                 renderSkybox.invoke(panorama, mouseX, mouseY, partialTicks);
-                drawGradientRect(0, 0, width, height, 0x40000000, 0x40000000);
+                drawGradientRect(0, 0, width, height, 0x50000000, 0x70000000);
                 return;
             } catch (Throwable t) {
                 renderSkybox = null;
@@ -189,14 +216,11 @@ public class ModsScreen extends GuiScreen {
     }
 
     public void select(ModContainer mod) {
-        if (mod != selected) descriptionScroll = 0;
+        if (mod != selected) descriptionScroll = descriptionTarget = 0;
         selected = mod;
         lastSelected = mod;
+        if (list != null && mod != null) list.ensureVisible(mod);
         updateButtons();
-    }
-
-    private boolean hasConfig(ModContainer mod) {
-        return ConfigCompat.has(mod);
     }
 
     private String getWebsite(ModContainer mod) {
@@ -213,24 +237,25 @@ public class ModsScreen extends GuiScreen {
 
     private void updateButtons() {
         if (configureButton == null) return;
-        configureButton.visible = selected != null && hasConfig(selected);
+        configureButton.visible = selected != null && ConfigCompat.has(selected);
         websiteButton.visible = getWebsite(selected) != null;
         updatesButton.visible = getUpdateUrl(selected) != null;
-        // Like Mod Menu, the link buttons share the right pane's width
-        int paneW = width - 2 - rightPaneX;
+        // The link buttons share the details panel's width
+        int left = rightX + PAD;
+        int full = rightRight - PAD - left;
         if (websiteButton.visible && updatesButton.visible) {
-            websiteButton.width = paneW / 2 - 2;
-            updatesButton.width = paneW / 2 - 2;
-            updatesButton.xPosition = rightPaneX + paneW / 2 + 2;
+            websiteButton.width = (full - 4) / 2;
+            updatesButton.width = full - websiteButton.width - 4;
+            updatesButton.xPosition = left + websiteButton.width + 4;
         } else {
-            websiteButton.width = paneW;
-            updatesButton.width = paneW;
-            updatesButton.xPosition = rightPaneX;
+            websiteButton.width = full;
+            updatesButton.width = full;
+            updatesButton.xPosition = left;
         }
         sortButton.displayString = "Sort: " + (ModMenuConfig.sortAscending ? "A-Z" : "Z-A");
         librariesButton.displayString = "Libraries: " + (ModMenuConfig.showLibraries ? "Shown" : "Hidden");
         boolean hasLinks = websiteButton.visible || updatesButton.visible;
-        descriptionTop = HEADER_Y + 37 + (hasLinks ? 25 : 0);
+        descriptionTop = panelTop + 48 + (hasLinks ? 26 : 0);
     }
 
     // ---- input ------------------------------------------------------------------------------
@@ -333,7 +358,7 @@ public class ModsScreen extends GuiScreen {
         searchBox.setFocused(true);
         list.mouseClicked(mouseX, mouseY, mouseButton);
         if (mouseButton == 0 && linkWidth > 0 && mouseX >= linkX && mouseX < linkX + linkWidth
-                && mouseY >= linkY && mouseY < linkY + 9) {
+                && mouseY >= linkY - 1 && mouseY < linkY + 9) {
             openUrl(getWebsite(selected));
         }
     }
@@ -353,9 +378,8 @@ public class ModsScreen extends GuiScreen {
         int mouseY = height - Mouse.getEventY() * height / mc.displayHeight - 1;
         if (list.isMouseOver(mouseX, mouseY)) {
             list.scroll(wheel);
-        } else if (mouseX >= rightPaneX && mouseY >= descriptionTop && mouseY < height - 36) {
-            descriptionScroll -= wheel > 0 ? 18 : -18;
-            descriptionScroll = Math.max(0, descriptionScroll);
+        } else if (mouseX >= rightX && mouseX < rightRight && mouseY >= descriptionTop && mouseY < panelBottom) {
+            descriptionTarget = Math.max(0, descriptionTarget + (wheel > 0 ? -LINE * 3 : LINE * 3));
         }
     }
 
@@ -375,122 +399,173 @@ public class ModsScreen extends GuiScreen {
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         drawBackgroundLayer(mouseX, mouseY, partialTicks);
+
+        drawCenteredString(fontRendererObj, EnumChatFormatting.BOLD + "Mods", width / 2, 9, Theme.TEXT);
+
+        drawSearchBar();
         list.draw(mouseX, mouseY);
 
-        drawCenteredString(fontRendererObj, "Mods", list.width / 2, 6, 0xFFFFFF);
-        searchBox.drawTextBox();
-        if (searchBox.getText().isEmpty()) {
-            fontRendererObj.drawString(EnumChatFormatting.ITALIC + "Search...", searchBox.xPosition + 4,
-                    searchBox.yPosition + 5, 0x808080);
+        Theme.panel(rightX, panelTop, rightRight, panelBottom);
+        if (selected != null) {
+            drawSelectedMod(mouseX, mouseY);
+        } else {
+            drawCenteredString(fontRendererObj, "No mods found", (rightX + rightRight) / 2, (panelTop + panelBottom) / 2 - 4, Theme.TEXT_MUTED);
         }
-
-        int shown = list.getMods().size();
-        String showing = shown == allMods.size() || (searchBox.getText().isEmpty() && !filtersShown)
-                ? "Showing " + shown + " mods"
-                : "Showing " + shown + "/" + allMods.size() + " mods";
-        fontRendererObj.drawStringWithShadow(showing, 8, showingY, 0xFFFFFF);
-
-        if (selected != null) drawSelectedMod();
 
         super.drawScreen(mouseX, mouseY, partialTicks);
 
-        drawFilterIcon(buttonList.get(0));
-        if (configureButton.visible) drawConfigIcon(configureButton);
-
         if (configureButton.visible && configureButton.isMouseOver()) {
             drawHoveringText(Collections.singletonList("Configure..."), mouseX, mouseY);
+        } else if (filterButton.isMouseOver()) {
+            drawHoveringText(Collections.singletonList(filtersShown ? "Hide filters" : "Show filters"), mouseX, mouseY);
         }
     }
 
-    private void drawSelectedMod() {
-        int x = rightPaneX;
-        int y = HEADER_Y;
-        int maxX = width - (configureButton.visible ? 26 : 4);
-        int textX = x + 38;
+    private void drawSearchBar() {
+        boolean focused = searchBox.isFocused();
+        drawRect(searchX, searchY, searchRight, searchBottom, 0xB0000000);
+        Theme.outline(searchX, searchY, searchRight, searchBottom, focused ? 0xA0FFFFFF : 0x50FFFFFF);
+        drawSearchIcon(searchX + 6, searchY + 5, 0xFF9A9A9A);
+
+        searchBox.drawTextBox();
+        if (searchBox.getText().isEmpty()) {
+            fontRendererObj.drawString(EnumChatFormatting.ITALIC + "Search mods...", searchX + 18, searchY + 5, 0x6E6E6E);
+        }
+
+        int shown = list.getMods().size();
+        String count = shown == allMods.size() || (searchBox.getText().isEmpty() && !filtersShown)
+                ? shown + (shown == 1 ? " mod" : " mods")
+                : shown + " / " + allMods.size();
+        fontRendererObj.drawString(count, searchRight - 6 - fontRendererObj.getStringWidth(count), searchY + 5, Theme.TEXT_MUTED);
+    }
+
+    private void drawSelectedMod(int mouseX, int mouseY) {
+        int x = rightX + PAD;
+        int y = panelTop + PAD;
+        int maxX = rightRight - PAD - (configureButton.visible ? 24 : 0);
+        int textX = x + 40;
 
         ModIcons.draw(selected, x, y, 32);
 
         String name = RenderUtil.trim(fontRendererObj, selected.getName(), maxX - textX);
-        fontRendererObj.drawStringWithShadow(name, textX, y + 1, 0xFFFFFF);
+        fontRendererObj.drawStringWithShadow(EnumChatFormatting.BOLD + name, textX, y + 1, Theme.TEXT);
 
         String version = selected.getDisplayVersion();
         if (version == null || version.isEmpty()) version = selected.getVersion();
+        int lineX = textX;
         if (version != null && !version.isEmpty()) {
             if (Character.isDigit(version.charAt(0))) version = "v" + version;
-            fontRendererObj.drawStringWithShadow(RenderUtil.trim(fontRendererObj, version, maxX - textX), textX, y + 12, 0xAAAAAA);
+            version = RenderUtil.trim(fontRendererObj, version, (maxX - textX) / 2);
+            fontRendererObj.drawString(version, textX, y + 12, Theme.TEXT_MUTED);
+            lineX += fontRendererObj.getStringWidth(version) + 5;
+        }
+        ModBadge.drawAll(fontRendererObj, ModBadge.getBadges(selected), lineX, y + 12, maxX);
+
+        String authors = authors(selected);
+        if (!authors.isEmpty()) {
+            fontRendererObj.drawString(RenderUtil.trim(fontRendererObj, "by " + authors, maxX - textX), textX, y + 23, Theme.TEXT_MUTED);
+        }
+
+        drawDescription(mouseX, mouseY);
+    }
+
+    /** One line of the details panel. */
+    private static final class Line {
+        final String text;
+        final int color;
+        final int indent;
+        final boolean link;
+
+        Line(String text, int color, int indent, boolean link) {
+            this.text = text;
+            this.color = color;
+            this.indent = indent;
+            this.link = link;
+        }
+    }
+
+    private void drawDescription(int mouseX, int mouseY) {
+        int left = rightX + 1;
+        int right = rightRight - 1;
+        int top = descriptionTop;
+        int bottom = panelBottom - 1;
+        if (bottom <= top) return;
+
+        Theme.divider(rightX + PAD, rightRight - PAD, top - 1);
+
+        List<Line> lines = buildDescriptionLines(right - left - PAD * 2 - 6);
+        int contentHeight = lines.size() * LINE + PAD * 2;
+        float max = Math.max(0, contentHeight - (bottom - top));
+        descriptionTarget = Math.min(descriptionTarget, max);
+        descriptionScroll += (descriptionTarget - descriptionScroll) * 0.45F;
+        if (Math.abs(descriptionTarget - descriptionScroll) < 0.5F) descriptionScroll = descriptionTarget;
+
+        RenderUtil.scissor(left, top, right - left, bottom - top);
+        int y = top + PAD - Math.round(descriptionScroll);
+        linkWidth = -1;
+        for (Line line : lines) {
+            if (y > top - LINE && y < bottom) {
+                int x = left + PAD - 1 + line.indent;
+                if (line.link) {
+                    linkX = x;
+                    linkY = y;
+                    linkWidth = fontRendererObj.getStringWidth(line.text);
+                    boolean hover = mouseX >= linkX && mouseX < linkX + linkWidth && mouseY >= y - 1 && mouseY < y + 9;
+                    fontRendererObj.drawString((hover ? EnumChatFormatting.UNDERLINE : "") + line.text, x, y, line.color);
+                } else {
+                    fontRendererObj.drawString(line.text, x, y, line.color);
+                }
+            }
+            y += LINE;
+        }
+        RenderUtil.endScissor();
+
+        if (max > 0) {
+            int trackTop = top + 4;
+            int trackHeight = bottom - top - 8;
+            int thumb = Math.max(16, trackHeight * (bottom - top) / contentHeight);
+            int thumbTop = trackTop + Math.round(descriptionScroll * (trackHeight - thumb) / max);
+            Gui.drawRect(right - 5, trackTop, right - 2, trackTop + trackHeight, 0x20FFFFFF);
+            Gui.drawRect(right - 5, thumbTop, right - 2, thumbTop + thumb, 0x70FFFFFF);
+        }
+    }
+
+    private void heading(List<Line> lines, String title) {
+        if (!lines.isEmpty()) lines.add(new Line("", 0, 0, false));
+        lines.add(new Line(EnumChatFormatting.BOLD + title.toUpperCase(), Theme.TEXT_HEADING, 0, false));
+    }
+
+    private void wrapped(List<Line> lines, String text, int color, int indent, int wrapWidth) {
+        for (String paragraph : text.replace("\r", "").split("\n")) {
+            for (String l : fontRendererObj.listFormattedStringToWidth(paragraph, wrapWidth - indent)) {
+                lines.add(new Line(l, color, indent, false));
+            }
+        }
+    }
+
+    private List<Line> buildDescriptionLines(int wrapWidth) {
+        List<Line> lines = new ArrayList<Line>();
+        ModMetadata meta = selected.getMetadata();
+
+        String description = ModInfo.get(selected).description;
+        if (description == null) description = getSummary(selected);
+        wrapped(lines, description, Theme.TEXT_BODY, 0, wrapWidth);
+
+        if (getWebsite(selected) != null) {
+            heading(lines, "Links");
+            lines.add(new Line("Website", Theme.LINK, 0, true));
         }
 
         String authors = authors(selected);
         if (!authors.isEmpty()) {
-            fontRendererObj.drawStringWithShadow(RenderUtil.trim(fontRendererObj, "By " + authors, maxX - textX), textX, y + 23, 0xAAAAAA);
-        } else {
-            ModBadge.drawAll(fontRendererObj, ModBadge.getBadges(selected), textX, y + 23, maxX);
+            heading(lines, "Authors");
+            wrapped(lines, authors, Theme.TEXT_BODY, 0, wrapWidth);
         }
 
-        drawDescription();
-    }
-
-    private void drawDescription() {
-        int left = rightPaneX;
-        int right = width - 2;
-        int top = descriptionTop;
-        int bottom = height - 36;
-        if (bottom <= top) return;
-
-        RenderUtil.drawListBackground(left, top, right, bottom, descriptionScroll);
-
-        List<String> lines = buildDescriptionLines(right - left - 12);
-        int contentHeight = lines.size() * 9 + 8;
-        float max = Math.max(0, contentHeight - (bottom - top));
-        if (descriptionScroll > max) descriptionScroll = max;
-
-        RenderUtil.scissor(left, top, right - left, bottom - top);
-        int y = top + 4 - (int) descriptionScroll;
-        linkWidth = -1;
-        for (String line : lines) {
-            if (y > top - 9 && y < bottom) {
-                if (line.startsWith(LINK_PREFIX)) {
-                    // Links are indented by position, not spaces, so the underline doesn't run into the indent
-                    linkX = left + 4 + fontRendererObj.getStringWidth("  ");
-                    linkY = y;
-                    linkWidth = fontRendererObj.getStringWidth(line);
-                    fontRendererObj.drawStringWithShadow(line, linkX, y, 0xFFFFFF);
-                } else {
-                    fontRendererObj.drawStringWithShadow(line, left + 4, y, 0xFFFFFF);
-                }
-            }
-            y += 9;
-        }
-        RenderUtil.endScissor();
-    }
-
-    private List<String> buildDescriptionLines(int wrapWidth) {
-        List<String> lines = new ArrayList<String>();
-        ModMetadata meta = selected.getMetadata();
-
-        for (String paragraph : getSummary(selected).split("\n")) {
-            lines.addAll(fontRendererObj.listFormattedStringToWidth(paragraph, wrapWidth));
-        }
-
-        if (getWebsite(selected) != null) {
-            lines.add("");
-            lines.add("Links:");
-            lines.add(LINK_PREFIX + "Website");
-        }
-
-        String authors = authors(selected);
         String credits = ModInfo.get(selected).credits;
-        boolean hasCredits = credits != null;
-        if (!authors.isEmpty() || hasCredits) {
-            lines.add("");
-            lines.add("Credits:");
-            if (!authors.isEmpty()) {
-                lines.add("  Authors:");
-                for (String l : fontRendererObj.listFormattedStringToWidth(authors, wrapWidth - 16)) lines.add("    " + l);
-            }
-            if (hasCredits) {
-                for (String l : fontRendererObj.listFormattedStringToWidth(credits, wrapWidth - 8)) lines.add("  " + l);
-            }
+        if (credits != null) {
+            heading(lines, "Credits");
+            wrapped(lines, credits, Theme.TEXT_BODY, 0, wrapWidth);
         }
 
         if (meta != null && meta.childMods != null && !meta.childMods.isEmpty()) {
@@ -499,38 +574,43 @@ public class ModsScreen extends GuiScreen {
                 if (sb.length() > 0) sb.append(", ");
                 sb.append(child.getName());
             }
-            lines.add("");
-            lines.add("Contains:");
-            for (String l : fontRendererObj.listFormattedStringToWidth(sb.toString(), wrapWidth - 8)) lines.add("  " + l);
+            heading(lines, "Contains");
+            wrapped(lines, sb.toString(), Theme.TEXT_BODY, 0, wrapWidth);
         }
+
+        heading(lines, "Mod ID");
+        lines.add(new Line(selected.getModId(), Theme.TEXT_MUTED, 0, false));
         return lines;
     }
 
-    /** Funnel icon drawn on the filter button, like Mod Menu's. */
-    private void drawFilterIcon(GuiButton b) {
-        int cx = b.xPosition + 10, y = b.yPosition + 5;
-        int c = 0xFFE0E0E0;
-        drawRect(cx - 6, y, cx + 6, y + 1, c);
-        drawRect(cx - 6, y, cx - 5, y + 2, c);
-        drawRect(cx + 5, y, cx + 6, y + 2, c);
-        drawRect(cx - 5, y + 2, cx - 3, y + 3, c);
-        drawRect(cx + 3, y + 2, cx + 5, y + 3, c);
-        drawRect(cx - 3, y + 3, cx - 1, y + 5, c);
-        drawRect(cx + 1, y + 3, cx + 3, y + 5, c);
-        drawRect(cx - 1, y + 5, cx, y + 10, c);
-        drawRect(cx, y + 5, cx + 1, y + 10, c);
+    // ---- icons ------------------------------------------------------------------------------
+
+    private static void drawSearchIcon(int x, int y, int c) {
+        // Small magnifying glass
+        drawRect(x + 1, y, x + 5, y + 1, c);
+        drawRect(x + 1, y + 5, x + 5, y + 6, c);
+        drawRect(x, y + 1, x + 1, y + 5, c);
+        drawRect(x + 5, y + 1, x + 6, y + 5, c);
+        drawRect(x + 5, y + 5, x + 7, y + 7, c);
+        drawRect(x + 6, y + 6, x + 8, y + 8, c);
     }
 
-    /** Slider-style "settings" icon on the configure button, like Mod Menu's. */
-    private void drawConfigIcon(GuiButton b) {
-        int x = b.xPosition + 4, y = b.yPosition + 4;
-        int c = 0xFFE0E0E0;
-        int[] knobs = {8, 3, 6};
+    private static void drawFilterIcon(int bx, int by, int bw, int bh, int c) {
+        int cx = bx + bw / 2, y = by + 5;
+        drawRect(cx - 5, y, cx + 5, y + 1, c);
+        drawRect(cx - 4, y + 1, cx + 4, y + 2, c);
+        drawRect(cx - 3, y + 2, cx + 3, y + 3, c);
+        drawRect(cx - 2, y + 3, cx + 2, y + 4, c);
+        drawRect(cx - 1, y + 4, cx + 1, y + 8, c);
+    }
+
+    private static void drawConfigIcon(int bx, int by, int c) {
+        int x = bx + 4, y = by + 4;
+        int[] knobs = {7, 3, 6};
         for (int i = 0; i < 3; i++) {
-            int ly = y + 2 + i * 5;
-            drawRect(x, ly, x + 12, ly + 1, c);
+            int ly = y + 1 + i * 4;
+            drawRect(x, ly, x + 10, ly + 1, c);
             drawRect(x + knobs[i] - 1, ly - 1, x + knobs[i] + 2, ly + 2, c);
-            drawRect(x + knobs[i], ly, x + knobs[i] + 1, ly + 1, 0xFF404040);
         }
     }
 }

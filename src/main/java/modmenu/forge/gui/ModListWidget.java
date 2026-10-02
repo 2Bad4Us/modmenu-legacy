@@ -11,16 +11,20 @@ import java.util.List;
 
 /** Left-hand scrolling list of mods: icon, name + badges, and a two-line summary. */
 public class ModListWidget {
-    public static final int ENTRY_HEIGHT = 36;
+    public static final int ROW_HEIGHT = 40;
     private static final int PADDING = 4;
-    private static final int SCROLLBAR_WIDTH = 6;
+    private static final int SCROLLBAR_WIDTH = 3;
+    private static final int ICON = 32;
 
     private final Minecraft mc = Minecraft.getMinecraft();
     private final ModsScreen screen;
     public int x, y, width, height;
     private List<ModContainer> mods = new ArrayList<ModContainer>();
+    /** Where the list is drawn (eases towards targetScroll for smooth scrolling). */
     private float scroll;
+    private float targetScroll;
     private boolean draggingScrollbar;
+    private int dragOffset;
 
     public ModListWidget(ModsScreen screen, int x, int y, int width, int height) {
         this.screen = screen;
@@ -32,7 +36,8 @@ public class ModListWidget {
 
     public void setMods(List<ModContainer> mods) {
         this.mods = mods;
-        clampScroll();
+        targetScroll = clamp(targetScroll);
+        scroll = clamp(scroll);
     }
 
     public List<ModContainer> getMods() {
@@ -40,15 +45,15 @@ public class ModListWidget {
     }
 
     private int contentHeight() {
-        return mods.size() * ENTRY_HEIGHT + PADDING;
+        return mods.size() * ROW_HEIGHT + PADDING * 2;
     }
 
     private int maxScroll() {
-        return Math.max(0, contentHeight() - height + PADDING);
+        return Math.max(0, contentHeight() - height);
     }
 
-    private void clampScroll() {
-        scroll = Math.max(0, Math.min(scroll, maxScroll()));
+    private float clamp(float value) {
+        return Math.max(0, Math.min(value, maxScroll()));
     }
 
     private boolean hasScrollbar() {
@@ -56,89 +61,104 @@ public class ModListWidget {
     }
 
     private int rowLeft() {
-        return x + PADDING + 2;
+        return x + PADDING;
     }
 
     private int rowRight() {
-        return x + width - PADDING - (hasScrollbar() ? SCROLLBAR_WIDTH : 0);
+        return x + width - PADDING - (hasScrollbar() ? SCROLLBAR_WIDTH + 3 : 0);
+    }
+
+    private int rowTop(int index) {
+        return y + PADDING + index * ROW_HEIGHT - Math.round(scroll);
     }
 
     public void ensureVisible(ModContainer mod) {
         int index = mods.indexOf(mod);
         if (index < 0) return;
-        int top = index * ENTRY_HEIGHT;
-        if (top < scroll) scroll = top;
-        else if (top + ENTRY_HEIGHT + PADDING > scroll + height) scroll = top + ENTRY_HEIGHT + PADDING - height;
-        clampScroll();
+        int top = PADDING + index * ROW_HEIGHT;
+        if (top < targetScroll) targetScroll = top - PADDING;
+        else if (top + ROW_HEIGHT + PADDING > targetScroll + height) targetScroll = top + ROW_HEIGHT + PADDING - height;
+        targetScroll = clamp(targetScroll);
     }
 
     public boolean isMouseOver(int mouseX, int mouseY) {
         return mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height;
     }
 
+    private int indexAt(int mouseX, int mouseY) {
+        if (!isMouseOver(mouseX, mouseY) || mouseX < rowLeft() || mouseX >= rowRight()) return -1;
+        int rel = mouseY - y - PADDING + Math.round(scroll);
+        if (rel < 0) return -1;
+        int index = rel / ROW_HEIGHT;
+        if (rel % ROW_HEIGHT >= ROW_HEIGHT - 2) return -1; // gap between rows
+        return index < mods.size() ? index : -1;
+    }
+
     public void draw(int mouseX, int mouseY) {
         if (draggingScrollbar) updateDrag(mouseY);
+        // Ease towards the target; snaps once close enough
+        scroll += (targetScroll - scroll) * 0.45F;
+        if (Math.abs(targetScroll - scroll) < 0.5F) scroll = targetScroll;
+
         FontRenderer font = mc.fontRendererObj;
+        Theme.panel(x, y, x + width, y + height);
 
-        RenderUtil.drawListBackground(x, y, x + width, y + height, scroll);
-
-        RenderUtil.scissor(x, y, width, height);
+        RenderUtil.scissor(x + 1, y + 1, width - 2, height - 2);
         int left = rowLeft();
         int right = rowRight();
-        int rowWidth = right - left;
+        int hover = draggingScrollbar ? -1 : indexAt(mouseX, mouseY);
         for (int i = 0; i < mods.size(); i++) {
-            int top = y + PADDING + i * ENTRY_HEIGHT - (int) scroll;
-            if (top + ENTRY_HEIGHT < y || top > y + height) continue;
+            int top = rowTop(i);
+            if (top + ROW_HEIGHT < y || top > y + height) continue;
             ModContainer mod = mods.get(i);
+            int bottom = top + ROW_HEIGHT - 2;
 
             if (mod == screen.getSelected()) {
-                Gui.drawRect(left - 2, top - 2, right + 2, top + ENTRY_HEIGHT - 2, 0xFF808080);
-                Gui.drawRect(left - 1, top - 1, right + 1, top + ENTRY_HEIGHT - 3, 0xFF000000);
+                Gui.drawRect(left, top, right, bottom, Theme.ROW_SELECTED);
+                Theme.outline(left, top, right, bottom, Theme.ROW_SELECTED_BORDER);
+            } else if (i == hover) {
+                Gui.drawRect(left, top, right, bottom, Theme.ROW_HOVER);
             }
 
-            ModIcons.draw(mod, left, top, 32);
+            ModIcons.draw(mod, left + 3, top + 3, ICON);
 
-            int textX = left + 32 + 3;
-            int textWidth = right - textX - 2;
+            int textX = left + ICON + 9;
+            int textWidth = right - textX - 4;
             String name = RenderUtil.trim(font, mod.getName(), textWidth);
-            font.drawString(name, textX, top + 1, 0xFFFFFF);
-            ModBadge.drawAll(font, ModBadge.getBadges(mod), textX + font.getStringWidth(name) + 3, top + 1, right);
+            font.drawStringWithShadow(name, textX, top + 5, Theme.TEXT);
+            ModBadge.drawAll(font, ModBadge.getBadges(mod), textX + font.getStringWidth(name) + 4, top + 5, right - 2);
 
             List<String> lines = font.listFormattedStringToWidth(ModsScreen.getSummary(mod), textWidth);
             for (int line = 0; line < Math.min(2, lines.size()); line++) {
                 String text = lines.get(line);
                 if (line == 1 && lines.size() > 2) text = RenderUtil.trim(font, text + "...", textWidth);
-                font.drawString(text, textX, top + 12 + line * 9, 0xA0A0A0);
+                font.drawString(text, textX, top + 17 + line * 9, Theme.TEXT_MUTED);
             }
         }
         RenderUtil.endScissor();
 
-
         if (hasScrollbar()) {
-            int barLeft = x + width - SCROLLBAR_WIDTH;
-            int barRight = x + width;
-            int thumbHeight = Math.max(32, height * height / contentHeight());
-            thumbHeight = Math.min(thumbHeight, height - 8);
-            int thumbTop = y + (int) (scroll * (height - thumbHeight) / maxScroll());
-            Gui.drawRect(barLeft, y, barRight, y + height, 0xFF000000);
-            Gui.drawRect(barLeft, thumbTop, barRight, thumbTop + thumbHeight, 0xFF808080);
-            Gui.drawRect(barLeft, thumbTop, barRight - 1, thumbTop + thumbHeight - 1, 0xFFC0C0C0);
+            int barX = x + width - PADDING - SCROLLBAR_WIDTH;
+            int trackTop = y + PADDING;
+            int trackHeight = height - PADDING * 2;
+            int thumbHeight = Math.max(20, trackHeight * height / contentHeight());
+            int thumbTop = trackTop + Math.round(scroll * (trackHeight - thumbHeight) / maxScroll());
+            boolean barHover = draggingScrollbar || (mouseX >= barX - 3 && mouseX < x + width && isMouseOver(mouseX, mouseY));
+            Gui.drawRect(barX, trackTop, barX + SCROLLBAR_WIDTH, trackTop + trackHeight, 0x20FFFFFF);
+            Gui.drawRect(barX, thumbTop, barX + SCROLLBAR_WIDTH, thumbTop + thumbHeight, barHover ? 0xC0FFFFFF : 0x70FFFFFF);
         }
     }
 
     public boolean mouseClicked(int mouseX, int mouseY, int button) {
         if (!isMouseOver(mouseX, mouseY) || button != 0) return false;
-        if (hasScrollbar() && mouseX >= x + width - SCROLLBAR_WIDTH) {
+        if (hasScrollbar() && mouseX >= x + width - PADDING - SCROLLBAR_WIDTH - 3) {
             draggingScrollbar = true;
+            dragOffset = -1;
             updateDrag(mouseY);
             return true;
         }
-        int relY = mouseY - y - PADDING + (int) scroll;
-        if (relY < 0) return true;
-        int index = relY / ENTRY_HEIGHT;
-        if (index >= 0 && index < mods.size() && mouseX >= rowLeft() - 2 && mouseX <= rowRight() + 2) {
-            screen.select(mods.get(index));
-        }
+        int index = indexAt(mouseX, mouseY);
+        if (index >= 0) screen.select(mods.get(index));
         return true;
     }
 
@@ -147,13 +167,12 @@ public class ModListWidget {
     }
 
     private void updateDrag(int mouseY) {
-        float progress = (mouseY - y) / (float) height;
-        scroll = progress * contentHeight() - height / 2.0F;
-        clampScroll();
+        float progress = (mouseY - y - PADDING) / (float) (height - PADDING * 2);
+        targetScroll = clamp(progress * contentHeight() - height / 2.0F);
+        scroll = targetScroll;
     }
 
     public void scroll(int wheel) {
-        scroll -= wheel > 0 ? ENTRY_HEIGHT / 2.0F * 1.5F : -ENTRY_HEIGHT / 2.0F * 1.5F;
-        clampScroll();
+        targetScroll = clamp(targetScroll + (wheel > 0 ? -ROW_HEIGHT : ROW_HEIGHT));
     }
 }
