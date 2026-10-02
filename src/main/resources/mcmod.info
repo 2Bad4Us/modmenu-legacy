@@ -6,7 +6,7 @@
     "version": "${version}",
     "mcversion": "1.8.9",
     "url": "https://github.com/2Bad4Us/modmenu-legacy",
-    "authorList": ["Craftbyte"],
+    "authorList": ["2Bad4Us"],
     "credits": "Inspired by the Mod Menu mod for Fabric.",
     "logoFile": "/assets/modmenu/icon.png",
     "dependencies": []

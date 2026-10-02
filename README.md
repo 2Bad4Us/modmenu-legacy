@@ -95,6 +95,6 @@ The release jar is written to `build/libs/`. Run `./gradlew runClient` to test i
 
 ## 📜 Credits & License
 
-- Made by **Craftbyte**
+- Made by **2Bad4Us** (2Bad)
 - Inspired by [Mod Menu](https://github.com/TerraformersMC/ModMenu) by TerraformersMC. This is an independent project: no code or assets were copied, and it is not affiliated with or endorsed by TerraformersMC.
 - Licensed under the **MIT License**. See [LICENSE](LICENSE).
