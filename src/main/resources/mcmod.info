@@ -1,0 +1,14 @@
+[
+  {
+    "modid": "modmenulegacy",
+    "name": "Mod Menu Legacy",
+    "description": "Adds a mod menu to view the list of mods you have installed.",
+    "version": "${version}",
+    "mcversion": "1.8.9",
+    "url": "https://github.com/2Bad4Us/modmenu-legacy",
+    "authorList": ["Craftbyte"],
+    "credits": "Inspired by the Mod Menu mod for Fabric.",
+    "logoFile": "/assets/modmenu/icon.png",
+    "dependencies": []
+  }
+]
